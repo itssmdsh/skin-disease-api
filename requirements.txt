@@ -1,7 +1,7 @@
-fastapi
-uvicorn
-torch==2.0.0+cpu
-torchvision==0.15.0+cpu
-Pillow
-typing_extensions
---extra-index-url https://download.pytorch.org/whl/cpu
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+torch==2.0.1
+torchvision==0.15.2
+numpy<2.0
+python-multipart==0.0.9
+Pillow==10.2.0
