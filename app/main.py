@@ -4,6 +4,7 @@ from fastapi import FastAPI, File, UploadFile
 from torchvision import models, transforms
 from PIL import Image
 import requests
+import torch.nn.functional as F
 
 app = FastAPI()
 
@@ -45,15 +46,27 @@ model = load_model(model_path)
 # Class names in order
 class_names = ['Acne', 'Eczema', 'Psoriasis', 'Warts', 'SkinCancer', 'Unknown_Normal']
 
-# Prediction endpoint
+# Prediction endpoint with confidence percentages for each class
 @app.post("/predict/")
 async def predict(file: UploadFile = File(...)):
+    # Open the image
     image = Image.open(file.file).convert("RGB")
     image = transform(image).unsqueeze(0)
 
+    # Perform inference
     with torch.no_grad():
         outputs = model(image)
-        _, predicted = torch.max(outputs, 1)
-
-    prediction = class_names[predicted.item()]
-    return {"prediction": prediction}
+        
+        # Apply softmax to get probabilities for each class
+        probabilities = F.softmax(outputs, dim=1)
+        
+        # Get the class with the highest probability
+        _, predicted = torch.max(probabilities, 1)
+        
+        # Prepare the prediction
+        prediction = class_names[predicted.item()]
+        
+        # Convert probabilities to a dictionary for each class with its percentage
+        class_probabilities = {class_names[i]: round(probabilities[0][i].item() * 100, 2) for i in range(len(class_names))}
+        
+    return {"prediction": prediction, "confidence_percentages": class_probabilities}
