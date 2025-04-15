@@ -1,45 +1,46 @@
-import os
-import gdown
-from fastapi import FastAPI, UploadFile
 import torch
+import torch.nn as nn
+from torchvision import models
 import torchvision.transforms as transforms
 from PIL import Image
+from fastapi import FastAPI, UploadFile, File
 from io import BytesIO
 
-# Initialize FastAPI app
-app = FastAPI()
+# Define class names exactly as in training
+CLASS_NAMES = ['Acne', 'Eczema', 'Psoriasis', 'Warts', 'SkinCancer', 'Unknown_Normal']
 
-# Path where the model will be saved
-model_path = "app/model.pth"
-model_url = "https://www.dropbox.com/scl/fi/mu7vcde9i971765otbv9y/model.pth?rlkey=aknqcedutttfj37n5q35kj3eg&st=ys7g0nvb&dl=1"  # Dropbox direct link
+# 1. Define the same model architecture
+def load_model(model_path):
+    model = models.resnet18(pretrained=False)
+    num_features = model.fc.in_features
+    model.fc = nn.Linear(num_features, len(CLASS_NAMES))  # 6 classes
+    model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu")))
+    model.eval()
+    return model
 
-# Check if the model exists, otherwise download it
-if not os.path.exists(model_path):
-    print("Downloading model from Dropbox...")
-    gdown.download(model_url, model_path, quiet=False)
-    print("Model downloaded.")
+# 2. Load model
+model = load_model("app/model.pth")
 
-# Load the PyTorch model
-model = torch.load(model_path)
-model.eval()
-
-# Define image transform (resize and normalize to match the model's requirements)
+# 3. Define transformation
 transform = transforms.Compose([
-    transforms.Resize((224, 224)),  # Resize image to 224x224 (change if needed)
-    transforms.ToTensor(),  # Convert image to tensor
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalization (adjust if needed)
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406],
+                         [0.229, 0.224, 0.225])
 ])
 
-# Prediction endpoint
+# 4. Set up FastAPI app
+app = FastAPI()
+
 @app.post("/predict/")
-async def predict(image: UploadFile):
-    image_data = await image.read()
-    img = Image.open(BytesIO(image_data))  # Open the image from bytes
-    img = transform(img).unsqueeze(0)  # Add batch dimension for the model
+async def predict(file: UploadFile = File(...)):
+    contents = await file.read()
+    image = Image.open(BytesIO(contents)).convert("RGB")
+    img_tensor = transform(image).unsqueeze(0)
 
-    # Make prediction
     with torch.no_grad():
-        outputs = model(img)  # Get model outputs
-        _, predicted = torch.max(outputs, 1)  # Get the class with the highest score
+        outputs = model(img_tensor)
+        _, predicted = torch.max(outputs, 1)
+        predicted_class = CLASS_NAMES[predicted.item()]
 
-    return {"prediction": predicted.item()}  # Return the predicted class index
+    return {"prediction": predicted_class}
