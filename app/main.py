@@ -1,45 +1,58 @@
 import os
-import urllib.request
-from fastapi import FastAPI, UploadFile
+import gdown
+from fastapi import FastAPI, UploadFile, File
 import torch
 import torchvision.transforms as transforms
 from PIL import Image
 from io import BytesIO
 
-# Initialize FastAPI app
 app = FastAPI()
 
-# Path where the model will be saved
-model_path = "app/model.pth"
-model_url = "https://drive.google.com/uc?id=1Q5sJGHHq1x-LWM0wr7Bj9prny196XoH9&export=download"
+# Google Drive model ID and local path
+MODEL_ID = "1Q5sJGHHq1x-LWM0wr7Bj9prny196XoH9"
+MODEL_PATH = "model.pth"
 
-# Check if the model exists, otherwise download it
-if not os.path.exists(model_path):
-    print("Downloading model...")
-    urllib.request.urlretrieve(model_url, model_path)
-    print("Model downloaded.")
+# Download model from Google Drive if it doesn't exist
+def download_model():
+    if not os.path.exists(MODEL_PATH):
+        print("Downloading model from Google Drive...")
+        gdown.download(id=MODEL_ID, output=MODEL_PATH, quiet=False)
+        print("Model downloaded.")
 
-# Load the PyTorch model
-model = torch.load(model_path)
+download_model()
+
+# Define your actual model class below
+# Replace this dummy with your real architecture
+class MyModel(torch.nn.Module):
+    def __init__(self):
+        super(MyModel, self).__init__()
+        self.fc = torch.nn.Linear(512, 10)  # Example layer
+
+    def forward(self, x):
+        return self.fc(x)
+
+# Load model
+model = MyModel()
+model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device("cpu")))
 model.eval()
 
-# Define image transform (resize and normalize to match the model's requirements)
+# Image preprocessing
 transform = transforms.Compose([
-    transforms.Resize((224, 224)),  # Resize image to 224x224 (change if needed)
-    transforms.ToTensor(),  # Convert image to tensor
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalization (adjust if needed)
+    transforms.Resize((224, 224)),  # Adjust to your model input size
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                         std=[0.229, 0.224, 0.225]),
 ])
 
 # Prediction endpoint
 @app.post("/predict/")
-async def predict(image: UploadFile):
+async def predict(image: UploadFile = File(...)):
     image_data = await image.read()
-    img = Image.open(BytesIO(image_data))  # Open the image from bytes
-    img = transform(img).unsqueeze(0)  # Add batch dimension for the model
+    img = Image.open(BytesIO(image_data)).convert("RGB")
+    img_tensor = transform(img).unsqueeze(0)
 
-    # Make prediction
     with torch.no_grad():
-        outputs = model(img)  # Get model outputs
-        _, predicted = torch.max(outputs, 1)  # Get the class with the highest score
+        output = model(img_tensor)
+        _, prediction = torch.max(output, 1)
 
-    return {"prediction": predicted.item()}  # Return the predicted class index
+    return {"prediction": prediction.item()}
