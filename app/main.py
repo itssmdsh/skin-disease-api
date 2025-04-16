@@ -1,12 +1,22 @@
 import os
 import torch
 from fastapi import FastAPI, File, UploadFile
+from fastapi.middleware.cors import CORSMiddleware  # Import CORSMiddleware
 from torchvision import models, transforms
 from PIL import Image
 import requests
 import torch.nn.functional as F
 
 app = FastAPI()
+
+# CORS setup to allow requests from any origin (you can customize the origins as needed)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins, you can restrict this by adding specific URLs like ["https://yourfrontend.com"]
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allow all headers
+)
 
 # Define the download function
 def download_model_from_dropbox(url: str, save_path: str):
